@@ -20,17 +20,17 @@ async function sendTelegramMessage(token, chatId, message) {
     };
     try {
         const response = await axios.post(url, data);
-        // console.log('消息已发送到 Telegram:', response.data);
-        console.log('消息已发送到 Telegram');
+        // console.log('消息已發送到 Telegram:', response.data);
+        console.log('消息已發送到 Telegram');
     } catch (error) {
         // if (error.response) {
-        //     console.error('发送 Telegram 消息时出错:', error.response.status, error.response.data);
+        //     console.error('發送 Telegram 消息時出錯:', error.response.status, error.response.data);
         // } else if (error.request) {
-        //     console.error('发送 Telegram 消息时出错:', error.request);
+        //     console.error('發送 Telegram 消息時出錯:', error.request);
         // } else {
-        //     console.error('发送 Telegram 消息时出错:', error.message);
+        //     console.error('發送 Telegram 消息時出錯:', error.message);
         // }
-        console.error('Telegram 消息发生失败');
+        console.error('Telegram 消息發送失敗');
     }
 }
 
@@ -80,7 +80,7 @@ async function sendTelegramMessage(token, chatId, message) {
             if (loginButton) {
                 await loginButton.click();
             } else {
-                throw new Error('无法找到登录按钮');
+                throw new Error('無法找到登錄按鈕');
             }
 
             await page.waitForNavigation();
@@ -92,21 +92,21 @@ async function sendTelegramMessage(token, chatId, message) {
 
             if (isLoggedIn) {
                 const nowUtc = formatToISO(new Date());
-                const nowBeijing = formatToISO(new Date(new Date().getTime() + 8 * 60 * 60 * 1000)); // 北京时间东8区
-                console.log(`账号 ${username} 于北京时间 ${nowBeijing}（UTC时间 ${nowUtc}）登录成功！`);
+                const nowBeijing = formatToISO(new Date(new Date().getTime() + 8 * 60 * 60 * 1000)); // 臺灣時間
+                console.log(`帳號 ${username} 於臺灣時間 ${nowBeijing}（UTC時間 ${nowUtc}）登錄成功！`);
                 if (telegramToken && telegramChatId) {
-                    await sendTelegramMessage(telegramToken, telegramChatId, `账号 ${username} 于北京时间 ${nowBeijing}（UTC时间 ${nowUtc}）登录成功！`);
+                    await sendTelegramMessage(telegramToken, telegramChatId, `帳號 ${username} 於臺灣時間 ${nowBeijing}（UTC時間 ${nowUtc}）登錄成功！`);
                 }
             } else {
-                console.error(`账号 ${username} 登录失败，请检查账号和密码是否正确。`);
+                console.error(`帳號 ${username} 登錄失敗，請檢查帳號和密碼是否正確。`);
                 if (telegramToken && telegramChatId) {
-                    await sendTelegramMessage(telegramToken, telegramChatId, `账号 ${username} 登录失败，请检查账号和密码是否正确。`);
+                    await sendTelegramMessage(telegramToken, telegramChatId, `帳號 ${username} 登錄失敗，請檢查帳號和密碼是否正確。`);
                 }
             }
         } catch (error) {
-            console.error(`账号 ${username} 登录时出现错误: ${error}`);
+            console.error(`帳號 ${username} 登錄時出現錯誤: ${error}`);
             if (telegramToken && telegramChatId) {
-                await sendTelegramMessage(telegramToken, telegramChatId, `账号 ${username} 登录时出现错误: ${error.message}`);
+                await sendTelegramMessage(telegramToken, telegramChatId, `帳號 ${username} 登錄時出現錯誤: ${error.message}`);
             }
         } finally {
             // 模拟人类行为
@@ -120,5 +120,5 @@ async function sendTelegramMessage(token, chatId, message) {
             await delayTime(delay);
         }
     }
-    console.log('所有账号登录完成！');
+    console.log('所有帳號登錄完成！');
 })();
