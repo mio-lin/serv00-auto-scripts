@@ -33,12 +33,7 @@ async function sendTelegramMessage(token, chatId, message) {
 
         const browser = await puppeteer.launch({ 
             headless: "new", 
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-blink-features=AutomationControlled'
-            ]
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
         
         const page = await browser.newPage();
@@ -50,41 +45,35 @@ async function sendTelegramMessage(token, chatId, message) {
             console.log(`[${username}] 正在連線至 ${url}...`);
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
 
-            // 1. 等待輸入框出現
             await page.waitForSelector('#id_username', { visible: true, timeout: 60000 });
+            await page.type('#id_username', username, { delay: 50 });
+            await page.type('#id_password', password, { delay: 50 });
 
-            await page.type('#id_username', username, { delay: 100 });
-            await page.type('#id_password', password, { delay: 100 });
-
-            const btnSelector = 'button.button--primary, button[type="submit"]';
-            await page.waitForSelector(btnSelector, { timeout: 30000 });
-
-            // 2. 執行暴力點擊與表單提交
-            console.log(`[${username}] 正在送出登入表單...`);
-            await page.evaluate((sel) => {
-                const btn = document.querySelector(sel);
-                if (btn) {
-                    btn.click();
-                    if (btn.form) btn.form.submit();
-                }
-            }, btnSelector);
-            
-            // 3. 等待跳轉完成
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(e => console.log("等待跳轉超時，嘗試直接判斷結果..."));
-
-            // 4. 改進的判斷邏輯：
-            // 只要頁面 URL 不再包含 "/login/"，或是出現了登出關鍵字，就視為成功。
-            const currentUrl = page.url();
-            const pageContent = await page.content();
-            
-            const isLoggedIn = await page.evaluate(() => {
-                const logoutKeywords = ['Logout', 'Wyloguj', 'Zamknij', 'Sign out'];
-                const hasLogoutBtn = document.querySelector('a[href="/logout/"]') !== null;
-                const hasKeyword = logoutKeywords.some(kw => document.body.innerText.includes(kw));
-                return hasLogoutBtn || hasKeyword;
+            // 執行表單提交
+            await page.evaluate(() => {
+                const form = document.querySelector('form[action="/login/"]');
+                if (form) form.submit();
+                else document.querySelector('button[type="submit"]').click();
             });
 
-            if (isLoggedIn || !currentUrl.includes('/login/')) {
+            // 關鍵修正：等待你截圖中的 DevilWEB 標誌或登出連結出現
+            console.log(`[${username}] 等待後台介面載入...`);
+            await Promise.race([
+                page.waitForSelector('a.navbar-brand.brand', { timeout: 30000 }),
+                page.waitForSelector('a[href="/logout/"]', { timeout: 30000 })
+            ]).catch(() => console.log("等待 UI 元素超時，進行最後檢查..."));
+
+            // 最終判定邏輯 (根據截圖特徵)
+            const result = await page.evaluate(() => {
+                const brand = document.querySelector('a.navbar-brand.brand');
+                const logout = document.querySelector('a[href="/logout/"]');
+                // 檢查是否包含 DevilWEB 或 登出字樣
+                const hasBrand = brand && brand.innerText.includes('DevilWEB');
+                const hasLogout = logout !== null;
+                return { success: hasBrand || hasLogout, url: window.location.href };
+            });
+
+            if (result.success || !page.url().includes('/login/')) {
                 const nowBeijing = formatToISO(new Date(new Date().getTime() + 8 * 60 * 60 * 1000));
                 const msg = `✅ [${username}] 台灣時間 ${nowBeijing} 登錄成功！`;
                 console.log(msg);
@@ -92,23 +81,18 @@ async function sendTelegramMessage(token, chatId, message) {
                     await sendTelegramMessage(telegramToken, telegramChatId, msg);
                 }
             } else {
-                // 如果還在登入頁，提取錯誤訊息
-                const errorMsg = await page.evaluate(() => {
-                    const alert = document.querySelector('.alert-error, .errorlist');
-                    return alert ? alert.innerText.trim() : '未知原因（可能密碼錯誤）';
-                });
-                throw new Error(`登錄失敗: ${errorMsg}`);
+                throw new Error("未能進入後台主頁，請確認帳密是否正確。");
             }
 
         } catch (error) {
             console.error(`[${username}] 錯誤: ${error.message}`);
             if (telegramToken && telegramChatId) {
-                await sendTelegramMessage(telegramToken, telegramChatId, `❌ [${username}] 登錄失敗: ${error.message}`);
+                await sendTelegramMessage(telegramToken, telegramChatId, `❌ [${username}] ${error.message}`);
             }
         } finally {
             await page.close();
             await browser.close();
-            await delayTime(3000);
+            await delayTime(2000);
         }
     }
 })();
