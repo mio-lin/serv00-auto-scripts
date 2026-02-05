@@ -19,17 +19,9 @@ async function sendTelegramMessage(token, chatId, message) {
         text: message
     };
     try {
-        const response = await axios.post(url, data);
-        // console.log('消息已發送到 Telegram:', response.data);
+        await axios.post(url, data);
         console.log('消息已發送到 Telegram');
     } catch (error) {
-        // if (error.response) {
-        //     console.error('發送 Telegram 消息時出錯:', error.response.status, error.response.data);
-        // } else if (error.request) {
-        //     console.error('發送 Telegram 消息時出錯:', error.request);
-        // } else {
-        //     console.error('發送 Telegram 消息時出錯:', error.message);
-        // }
         console.error('Telegram 消息發送失敗');
     }
 }
@@ -43,9 +35,8 @@ async function sendTelegramMessage(token, chatId, message) {
     for (const account of accounts) {
         const { username, password, panel } = account;
 
-        // 显示浏览器窗口&使用自定义窗口大小
         const browser = await puppeteer.launch({ 
-            headless: false, 
+            headless: "new", // 建議在伺服器使用 "new" 模式
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -56,17 +47,17 @@ async function sendTelegramMessage(token, chatId, message) {
             defaultViewport: null,
             ignoreHTTPSErrors: true
         });
+        
         const page = await browser.newPage();
-        // await page.setViewport({ width: 1366, height: 768 });
-        // await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36');
-        // await page.evaluateOnNewDocument(() => {
-        //     delete Object.getPrototypeOf(navigator).webdriver;
-        // });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
         let url = `https://${panel}/login/?next=/`;
 
         try {
-            await page.goto(url);
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+
+            // 1. 等待帳號輸入框出現 (確保 Cloudflare 轉完圈)
+            await page.waitForSelector('#id_username', { timeout: 30000 });
 
             const usernameInput = await page.$('#id_username');
             if (usernameInput) {
@@ -76,14 +67,19 @@ async function sendTelegramMessage(token, chatId, message) {
             await page.type('#id_username', username);
             await page.type('#id_password', password);
 
-            const loginButton = await page.$('#submit');
+            // 2. 修正：使用屬性選擇器尋找登入按鈕
+            const loginButtonSelector = 'button[type="submit"]';
+            await page.waitForSelector(loginButtonSelector, { visible: true });
+            const loginButton = await page.$(loginButtonSelector);
+
             if (loginButton) {
                 await loginButton.click();
             } else {
                 throw new Error('無法找到登錄按鈕');
             }
 
-            await page.waitForNavigation();
+            // 3. 等待登入後的頁面跳轉
+            await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
             const isLoggedIn = await page.evaluate(() => {
                 const logoutButton = document.querySelector('a[href="/logout/"]');
@@ -92,31 +88,26 @@ async function sendTelegramMessage(token, chatId, message) {
 
             if (isLoggedIn) {
                 const nowUtc = formatToISO(new Date());
-                const nowBeijing = formatToISO(new Date(new Date().getTime() + 8 * 60 * 60 * 1000)); // 臺灣時間
+                const nowBeijing = formatToISO(new Date(new Date().getTime() + 8 * 60 * 60 * 1000));
                 console.log(`帳號 ${username} 於臺灣時間 ${nowBeijing}（UTC時間 ${nowUtc}）登錄成功！`);
                 if (telegramToken && telegramChatId) {
-                    await sendTelegramMessage(telegramToken, telegramChatId, `帳號 ${username} 於臺灣時間 ${nowBeijing}（UTC時間 ${nowUtc}）登錄成功！`);
+                    await sendTelegramMessage(telegramToken, telegramChatId, `帳號 ${username} 於臺灣時間 ${nowBeijing} 登錄成功！`);
                 }
             } else {
-                console.error(`帳號 ${username} 登錄失敗，請檢查帳號和密碼是否正確。`);
+                console.error(`帳號 ${username} 登錄失敗，請檢查帳號和密碼。`);
                 if (telegramToken && telegramChatId) {
-                    await sendTelegramMessage(telegramToken, telegramChatId, `帳號 ${username} 登錄失敗，請檢查帳號和密碼是否正確。`);
+                    await sendTelegramMessage(telegramToken, telegramChatId, `帳號 ${username} 登錄失敗，請檢查帳號和密碼。`);
                 }
             }
         } catch (error) {
-            console.error(`帳號 ${username} 登錄時出現錯誤: ${error}`);
+            console.error(`帳號 ${username} 登錄時出現錯誤: ${error.message}`);
             if (telegramToken && telegramChatId) {
-                await sendTelegramMessage(telegramToken, telegramChatId, `帳號 ${username} 登錄時出現錯誤: ${error.message}`);
+                await sendTelegramMessage(telegramToken, telegramChatId, `帳號 ${username} 登錄錯誤: ${error.message}`);
             }
         } finally {
-            // 模拟人类行为
-            // await page.waitForTimeout(1000 + Math.floor(Math.random() * 2000)); 
-            // await page.type('#id_username', 'testuser', { delay: 100 + Math.floor(Math.random() * 100) });
-            // await page.click('#submit');
-            // await page.waitForNavigation();
             await page.close();
             await browser.close();
-            const delay = Math.floor(Math.random() * 5000) + 1000; // 随机延时1秒到5秒之间
+            const delay = Math.floor(Math.random() * 5000) + 1000;
             await delayTime(delay);
         }
     }
