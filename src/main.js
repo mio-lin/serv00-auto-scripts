@@ -47,46 +47,49 @@ async function sendTelegramMessage(token, chatId, message) {
 
         let url = `https://${panel}/login/?next=/`;
 
-        try {
+try {
             console.log(`[${username}] 正在連線至 ${url}...`);
-            
-            // 1. 增加等待時間到 90 秒，並使用 networkidle2
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
 
-            // 2. 輸出頁面標題，幫助除錯
             const title = await page.title();
             console.log(`[${username}] 目前頁面標題: ${title}`);
 
-            // 3. 檢查是否卡在 Cloudflare，如果是就多等 10 秒
-            if (title.includes('Just a moment')) {
-                console.log('偵測到 Cloudflare 驗證，等待中...');
-                await delayTime(10000);
-            }
-
-            // 4. 改用更寬鬆的 waitForSelector，先確定輸入框出現
+            // 1. 等待輸入框（確保進入 Sign in 頁面）
             await page.waitForSelector('#id_username', { visible: true, timeout: 60000 });
 
-            await page.type('#id_username', username, { delay: 50 });
-            await page.type('#id_password', password, { delay: 50 });
+            await page.type('#id_username', username, { delay: 100 });
+            await page.type('#id_password', password, { delay: 100 });
 
-            // 5. 按鈕選擇器：使用多重匹配，增加成功率
-            const btnSelector = 'button[type="submit"]';
-            await page.waitForSelector(btnSelector, { visible: true, timeout: 30000 });
+            // 2. 修正：針對按鈕的「全能型」尋找策略
+            // 不僅等 selector，還直接檢查頁面上的所有按鈕
+            console.log(`[${username}] 正在定位登入按鈕...`);
+            
+            const btnSelector = 'button.button--primary, button[type="submit"], input[type="submit"]';
+            
+            // 這裡將 visible 設為 false，只要它在 DOM 裡面出現就抓取，增加成功率
+            await page.waitForSelector(btnSelector, { timeout: 30000 });
 
-            // 6. 使用 page.evaluate 點擊（比 page.click 更暴力、更有效）
+            // 3. 採用「暴力點擊」：直接在瀏覽器環境執行 JS 提交表單，繞過所有 UI 阻礙
             await page.evaluate((sel) => {
-                document.querySelector(sel).click();
+                const btn = document.querySelector(sel);
+                if (btn) {
+                    btn.click();
+                    // 額外保險：如果 click 沒反應，直接提交它所在的 form
+                    if (btn.form) btn.form.submit();
+                }
             }, btnSelector);
             
-            console.log('已發送點擊指令');
+            console.log(`[${username}] 已送出登入指令`);
 
-            // 7. 等待跳轉
+            // 4. 等待跳轉（Serv00 跳轉有時較慢，放寬到 60s）
             await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
 
+            // 檢查是否包含「登出」字樣或連結
             const isLoggedIn = await page.evaluate(() => {
-                return document.querySelector('a[href="/logout/"]') !== null;
+                return document.body.innerText.includes('Logout') || 
+                       document.body.innerText.includes('Wyloguj') || 
+                       document.querySelector('a[href="/logout/"]') !== null;
             });
-
             if (isLoggedIn) {
                 const nowBeijing = formatToISO(new Date(new Date().getTime() + 8 * 60 * 60 * 1000));
                 console.log(`[${username}] 台灣時間 ${nowBeijing} 登錄成功！`);
